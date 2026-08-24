@@ -1,0 +1,17 @@
+# Pipeline configuration. Paths relative to the repo root.
+
+data:
+  processed_dir: data/processed
+  artifacts_dir: data/artifacts
+  registry_path: data/processed/registry.json
+  n_cases_per_task: 60
+  seed: 42
+
+eval:
+  experiment_name: promptforge
+  bootstrap_iters: 2000
+  regression_tolerance: 0.03   # a variant may not drop >3pp below the registered baseline
+
+cost:
+  usd_per_1k_input: 0.003
+  usd_per_1k_output: 0.015
