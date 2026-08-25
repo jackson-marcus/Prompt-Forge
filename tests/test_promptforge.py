@@ -1,4 +1,4 @@
-"""Prompt features, assertions, registry, A/B bootstrap, regression gate, API."""
+"""Prompt features, assertions, A/B bootstrap, regression gate, API contract."""
 
 from __future__ import annotations
 
@@ -104,3 +104,45 @@ def test_api_contract(api_client):
     ).json()
     assert ab["b"]["pass_rate"] >= ab["a"]["pass_rate"]
     assert "ci_low" in ab["ab"] and "passes_gate" in ab["regression"]
+
+
+def test_variant_history_diff_and_restore_routes(api_client):
+    from promptforge.registry.repository import get_repository
+
+    seeded = api_client.get("/variants/sentiment").json()
+    assert seeded["baseline"] == "bare"
+    assert "engineered" in seeded["variants"]
+
+    # edit a seeded prompt through the repository, then inspect it over HTTP
+    edited = "Classify. One word only: {input}"
+    get_repository().register("sentiment", "bare", edited, created_by="test")
+
+    lineage = api_client.get("/variants/sentiment/history", params={"name": "bare"}).json()
+    snapshots = lineage["history"]["bare"]
+    assert [s["version"] for s in snapshots] == [1, 2]
+    assert snapshots[1]["parent_version"] == 1
+    assert snapshots[0]["content_hash"] != snapshots[1]["content_hash"]
+
+    everything = api_client.get("/variants/sentiment/history").json()["history"]
+    assert everything.keys() >= {"bare", "formatted", "engineered"}
+    assert api_client.get("/variants/sentiment/history", params={"name": "no"}).status_code == 404
+
+    diff = api_client.get(
+        "/variants/sentiment/diff", params={"name": "bare", "a": 1, "b": 2}
+    ).json()
+    assert diff["identical"] is False
+    assert f"+{edited}" in diff["diff"] and "--- bare@v1" in diff["diff"]
+    stale = api_client.get("/variants/sentiment/diff", params={"name": "bare", "a": 1, "b": 99})
+    assert stale.status_code == 404
+
+    restored = api_client.post(
+        "/variants/sentiment/restore", json={"name": "bare", "version": 1}
+    ).json()
+    assert restored["head"]["version"] == 3, "restore appends a new head"
+    assert restored["head"]["parent_version"] == 1, "parented on the version restored"
+    # the head template is back to v1 without any history having been rewritten
+    assert (
+        api_client.get("/variants/sentiment").json()["variants"]["bare"]
+        == (seeded["variants"]["bare"])
+    )
+    assert len(api_client.get("/variants/sentiment/history").json()["history"]["bare"]) == 3

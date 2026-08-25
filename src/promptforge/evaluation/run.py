@@ -13,7 +13,7 @@ import mlflow
 import pandas as pd
 
 from promptforge.evaluation.harness import bootstrap_ab, regression_check, run_suite
-from promptforge.registry.store import list_variants
+from promptforge.registry.repository import get_repository
 from promptforge.settings import get_config, get_settings, resolve_path
 
 logger = logging.getLogger(__name__)
@@ -24,13 +24,18 @@ def evaluate() -> dict:
     cases = pd.read_parquet(resolve_path(cfg["data"]["processed_dir"]) / "cases.parquet")
     iters = cfg["eval"]["bootstrap_iters"]
 
+    repo = get_repository()
     report = {}
     metrics = {}
     for task in sorted(cases["task"].unique()):
         task_cases = cases[cases["task"] == task].reset_index(drop=True)
-        variants = list_variants(task)
-        baseline = variants["baseline"]
-        runs = {name: run_suite(tpl, task_cases) for name, tpl in variants["variants"].items()}
+        baseline = repo.baseline(task)
+        # Evaluate the head snapshot of each variant: whatever restore/edit history
+        # got us here, the leaderboard scores what is current.
+        runs = {
+            name: run_suite(snapshot.template, task_cases)
+            for name, snapshot in repo.heads(task).items()
+        }
 
         base_results = runs[baseline]["results"]
         rows = []

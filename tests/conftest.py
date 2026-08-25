@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -17,6 +16,14 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from make_tasks import TASKS, build_cases  # noqa: E402
 
 from promptforge.settings import get_config, get_settings  # noqa: E402
+
+
+@pytest.fixture
+def repo(tmp_path):
+    """An isolated prompt repository backed by its own JSON file."""
+    from promptforge.registry.repository import JsonPromptRepository
+
+    return JsonPromptRepository(tmp_path / "registry.json")
 
 
 @pytest.fixture(scope="session")
@@ -36,16 +43,18 @@ def evaluated(tmp_path_factory):
     cfg["data"]["registry_path"] = str(tmp / "processed" / "registry.json")
     cfg["eval"]["bootstrap_iters"] = 500
 
-    (tmp / "processed" / "registry.json").write_text(json.dumps({"prompts": {}}), encoding="utf-8")
+    from promptforge.registry.repository import get_repository
 
-    from promptforge.registry.store import register_prompt
+    repo = get_repository()
+    repo.clear()
 
     rng = np.random.default_rng(7)
     frames = []
     for task, spec in TASKS.items():
         frames.append(build_cases(task, spec, 50, rng))
-        for i, (name, template) in enumerate(spec["variants"].items()):
-            register_prompt(task, name, template, set_baseline=(i == 0))
+        for name, template in spec["variants"].items():
+            repo.register(task, name, template, created_by="conftest")
+        repo.set_baseline(task, next(iter(spec["variants"])))
     pd.concat(frames, ignore_index=True).to_parquet(
         tmp / "processed" / "cases.parquet", index=False
     )

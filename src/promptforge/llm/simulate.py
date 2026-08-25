@@ -58,10 +58,7 @@ class SimulatedModel:
             label = others[min(idx, len(others) - 1)]
 
         # formatting: without a format instruction the model wraps the label in prose
-        if feats["has_format_spec"]:
-            text = label
-        else:
-            text = f"The answer is {label}."
+        text = label if feats["has_format_spec"] else f"The answer is {label}."
 
         prompt_text = template.replace("{input}", task_input)
         return {

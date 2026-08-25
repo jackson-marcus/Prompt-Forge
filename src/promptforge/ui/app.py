@@ -28,7 +28,7 @@ if not _ok():
     st.error(f"API not reachable at {API_URL}. Start it with `make api`.")
     st.stop()
 
-tab_board, tab_ab = st.tabs(["🏆 Leaderboards", "⚖️ A/B bench"])
+tab_board, tab_ab, tab_history = st.tabs(["🏆 Leaderboards", "⚖️ A/B bench", "🕓 History"])
 
 with tab_board:
     tasks = httpx.get(f"{API_URL}/tasks", timeout=30).json()["tasks"]
@@ -77,3 +77,35 @@ with tab_ab:
             st.error(
                 f"Regression gate FAILED (drop {reg['regression']:.0%} > {reg['tolerance']:.0%})"
             )
+
+with tab_history:
+    tasks = httpx.get(f"{API_URL}/tasks", timeout=30).json()["tasks"]
+    task = st.selectbox("Task", list(tasks), key="hist-task")
+    history = httpx.get(f"{API_URL}/variants/{task}/history", timeout=30).json()["history"]
+    name = st.selectbox("Variant", list(history), key="hist-variant")
+    lineage = history[name]
+    st.dataframe(
+        pd.DataFrame(lineage)[["version", "parent_version", "created_by", "content_hash"]],
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.caption(
+        "History is append-only: restoring an old prompt appends a new version whose "
+        "parent is the restored one, so a rollback never erases what caused it."
+    )
+    versions = [s["version"] for s in lineage]
+    if len(versions) > 1:
+        c1, c2 = st.columns(2)
+        a = c1.selectbox("Base version", versions, index=0, key="hist-a")
+        b = c2.selectbox("Target version", versions, index=len(versions) - 1, key="hist-b")
+        diff = httpx.get(
+            f"{API_URL}/variants/{task}/diff",
+            params={"name": name, "a": a, "b": b},
+            timeout=30,
+        ).json()
+        if diff["identical"]:
+            st.info("Identical content — same hash, nothing to diff.")
+        else:
+            st.code(diff["diff"], language="diff")
+    else:
+        st.info("Only one version so far. Save an edited template to build a lineage.")

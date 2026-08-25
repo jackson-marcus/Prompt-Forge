@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from promptforge.registry.store import register_prompt
+from promptforge.registry.repository import get_repository
 from promptforge.settings import get_config, resolve_path
 
 TASKS = {
@@ -124,14 +124,15 @@ def main() -> None:
     out = resolve_path(cfg["data"]["processed_dir"])
     out.mkdir(parents=True, exist_ok=True)
 
-    # reset registry
-    (out / "registry.json").write_text(json.dumps({"prompts": {}}), encoding="utf-8")
+    repo = get_repository()
+    repo.clear()  # seed run: rebuild the prompt history from scratch
 
     frames = []
     for task, spec in TASKS.items():
         frames.append(build_cases(task, spec, cfg["data"]["n_cases_per_task"], rng))
-        for i, (name, template) in enumerate(spec["variants"].items()):
-            register_prompt(task, name, template, set_baseline=(i == 0))
+        for name, template in spec["variants"].items():
+            repo.register(task, name, template, created_by="make_tasks")
+        repo.set_baseline(task, next(iter(spec["variants"])))
     pd.concat(frames, ignore_index=True).to_parquet(out / "cases.parquet", index=False)
     print(json.dumps({"tasks": list(TASKS), "cases": sum(len(f) for f in frames)}))
 
