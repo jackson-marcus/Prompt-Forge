@@ -17,8 +17,6 @@
 
 </div>
 
-> **Portfolio project.** Built to demonstrate the Memento/Caretaker versioning pattern and a real evaluation harness on synthetic prompt-engineering tasks. The model is a deterministic offline simulator, not a live LLM. Not hardened for production use.
-
 ---
 
 ## The problem
