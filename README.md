@@ -1,58 +1,212 @@
-# PromptForge — Production Prompt Engineering, Versioned Registry & Memento Snapshots <div align="center"> [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B.svg?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Tests: Pytest](https://img.shields.io/badge/tests-pytest-blue.svg?logo=pytest&logoColor=white)](https://pytest.org/) </div> > **Enterprise prompt management, automated regression evaluation, and fast rollback versioning engineered with a Versioned Repository & Memento Snapshots Architecture.** --- ## 🏛️ Architecture Pattern **Versioned Repository + Memento Snapshots Architecture** Prompt engineering in LLM applications requires the same discipline as software version control:
-> **Note:** This is a portfolio project demonstrating software engineering patterns and ML concepts. Not intended for production use without further hardening. - **Silent Regression Hazards:** Minor tweaks to system instructions or few-shot examples often fix one edge case while causing silent hallucinations across 15% of previously working queries.
-- **Rollback Complexity:** Teams lack atomic point-in-time snapshot capabilities to instantly restore a known-good prompt state when production quality degrades. The **Versioned Repository & Memento Snapshots Architecture** models every prompt template, parameter set (temperature, top_p, model_id), and variable schema as an immutable `PromptMemento`. The `VersionedPromptRepository` coordinates atomic snapshot creation, lineage commit graphs, and instant zero-downtime rollbacks: ```mermaid
-flowchart TD subgraph Repo["📦 VersionedPromptRepository (Originator & Caretaker)"] direction TB V1["Prompt Template State (Current Working Draft)"] Commit["create_snapshot(message, author) -> PromptMemento"] Restore["restore_snapshot(snapshot_id)"] end Dev[Prompt Engineer / CI Pipeline] --> Repo subgraph Snapshots["📜 Immutable Memento Snapshot Store"] direction TB S1["Snapshot #1 (v1.0.0 — Production Tag)<br/>Temp: 0.2, Few-Shot K=3"] S2["Snapshot #2 (v1.1.0 — Experimental Tag)<br/>Temp: 0.7, Chain-of-Thought"] S3["Snapshot #3 (v1.2.0 — Release Candidate)<br/>Structured JSON Schema"] S1 --> S2 --> S3 end Repo --> Snapshots Snapshots --> Eval[Automated Benchmark Evaluation Suite] Eval --> Leaderboard["Regression & Semantic Similarity Report"]
-``` ### Memento Snapshot Lifecycle ```mermaid
-sequenceDiagram autonumber actor Engineer as Prompt Engineer participant Repo as VersionedPromptRepository participant Memento as PromptMemento (Snapshot) participant Eval as Evaluation Suite Engineer->>Repo: update_template("New Few-Shot CoT") Engineer->>Repo: create_snapshot("Add edge case handling") Repo->>Memento: Freeze immutable state & hash Repo->>Eval: Run automated regression suite alt Regression Detected (Score Drops < 90%) Engineer->>Repo: restore_snapshot(previous_id) Repo->>Engineer: State restored instantaneously else Regression Passed Engineer->>Repo: tag_snapshot(id, "production") end
-``` --- ## 📐 Mathematical Formulation ### 1. Semantic Similarity Regression Metric Evaluates embedding cosine similarity against ground-truth expected completions: $$\text{Sim}(\mathbf{y}_{\text{pred}}, \mathbf{y}_{\text{true}}) = \frac{\mathbf{e}(\mathbf{y}_{\text{pred}}) \cdot \mathbf{e}(\mathbf{y}_{\text{true}})}{\|\mathbf{e}(\mathbf{y}_{\text{pred}})\|_2 \|\mathbf{e}(\mathbf{y}_{\text{true}})\|_2}$$ ### 2. Prompt Efficiency Ratio (Quality per Token) Quantifies semantic quality normalized by prompt token count cost: $$\text{PER} = \frac{\text{Mean Accuracy Score}}{\text{Prompt Token Count}} \times 1000$$ --- ## 🚀 Quick Start & Usage ```bash
-# Setup environment and run tests
-uv sync
-uv run pytest # Launch FastAPI microservice & Streamlit prompt forge studio
-uv run uvicorn promptforge.api.routes:app --reload --port 8000
-``` ### Versioned Repository & Memento Snapshots in Python ```python
-from promptforge.registry import ( PromptTemplate, PromptMemento, VersionedPromptRepository,
-) # 1. Initialize repository with template
-repo = VersionedPromptRepository()
-repo.set_active_template( name="customer_intent_classifier", system_prompt="You are a strict financial classifier. Classify user intent into: REFUND, FRAUD, INQUIRY.", temperature=0.0, model_name="claude-3-5-sonnet",
-) # 2. Capture immutable snapshot commit
-snap_v1 = repo.create_snapshot( message="Initial baseline classifier prompt", author="Jackson Marcus", tags=["v1.0.0", "production"],
-) # 3. Experiment with new draft
-repo.set_active_template( name="customer_intent_classifier", system_prompt="Classify intent into JSON with confidence score.", temperature=0.2,
-)
-snap_v2 = repo.create_snapshot( message="Attempt JSON format enforcement", author="Jackson Marcus", tags=["v1.1.0-exp"],
-) # 4. Instant point-in-time rollback to production snapshot
-repo.restore_from_snapshot(snap_v1.snapshot_id)
-print("Active prompt restored to:", repo.get_active_template().system_prompt)
-``` --- ## 📊 Benchmark & Version Control Metrics | Feature | Raw Hardcoded Prompt Strings | PromptForge Versioned Registry |
+<div align="center">
+
+<img src="docs/brand/banner.svg" alt="PromptForge — a versioned prompt registry with A/B evaluation" width="720">
+
+</div>
+
+# PromptForge — a versioned prompt registry with A/B evaluation
+
+**Treat prompts like code you can version, test, and roll back.** PromptForge keeps every prompt variant as an immutable, append-only snapshot, scores each one against a task test-suite of assertion-checked cases, and compares variants with a paired-bootstrap win-rate — so "the new prompt is better" is a measured claim with a confidence interval, not a hunch.
+
+<div align="center">
+
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Tests: pytest](https://img.shields.io/badge/tests-pytest-0A9EDC.svg?logo=pytest&logoColor=white)](https://pytest.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
+
+</div>
+
+> **Portfolio project.** Built to demonstrate the Memento/Caretaker versioning pattern and a real evaluation harness on synthetic prompt-engineering tasks. The model is a deterministic offline simulator, not a live LLM. Not hardened for production use.
+
+---
+
+## The problem
+
+Prompt changes are deceptively risky. A small edit to a system instruction can fix one edge case and quietly break others, and there is usually no record of *which* wording shipped, *who* changed it, or how to get the previous one back. Prompts live as string literals scattered through application code, so there is nothing to diff, nothing to test against, and no clean rollback.
+
+PromptForge gives prompts the same discipline software already has: an append-only version history per variant, a test-suite that scores each version, an A/B comparison that says whether a change is a real improvement or noise, and a one-call restore that brings an old version back **without** rewriting history.
+
+## What it does
+
+- **Versions prompts** as immutable, content-addressed snapshots — identical text is never stored twice, and a stale save is rejected instead of clobbering someone else's version.
+- **Scores prompts** by running a task's cases through a model and checking each output with an assertion (`exact_match`, `contains`, `is_json`, `regex`).
+- **Compares variants** with a paired bootstrap: the pass-rate difference plus a 95% confidence interval, so "B beats A" only counts when the interval clears zero.
+- **Gates regressions**: a candidate that drops more than the configured tolerance below the registered baseline fails the gate.
+- **Accounts for cost**: input/output tokens are priced per the config, so quality is always weighed against spend.
+
+## How it works
+
+The registry is built on the **Memento pattern** with a swappable storage backend, and the evaluation harness is a separate, pure layer that reads snapshots and scores them.
+
+```mermaid
+flowchart TD
+    Eng["Prompt engineer / CI"] --> Repo
+
+    subgraph Registry["Versioned registry (append-only)"]
+        direction TB
+        Variant["PromptVariant<br/>(originator: mutable working copy)"]
+        Repo["PromptRepository<br/>(caretaker: policy + version numbers)"]
+        Snap["PromptSnapshot<br/>(memento: immutable, content-hashed)"]
+        Variant -->|capture| Snap
+        Repo -->|save / restore / diff| Snap
+        Repo -->|checkout| Variant
+        Backend["JsonPromptRepository<br/>(swappable backend)"]
+        Repo -.->|delegates storage| Backend
+    end
+
+    Repo --> Harness
+
+    subgraph Eval["Evaluation harness"]
+        direction TB
+        Harness["run_suite: score each case<br/>via assertions + token cost"]
+        Boot["bootstrap_ab: paired win-rate CI"]
+        Gate["regression_check: gate vs baseline"]
+        Harness --> Boot --> Gate
+    end
+
+    Model["SimulatedModel<br/>(deterministic, offline)"] --> Harness
+    Gate --> Out["Leaderboard + MLflow run + report.pkl"]
+    Repo --> API["FastAPI"] --> UI["Streamlit bench"]
+```
+
+### The versioning model (Memento / Caretaker)
+
+Three roles, each with one job:
+
+- **`PromptSnapshot`** (memento) — a frozen, content-addressed value object recording one state of one variant. It validates its own `content_hash` on construction, so a snapshot can never claim to be a template it isn't, whether just captured or read back off disk.
+- **`PromptVariant`** (originator) — the mutable working copy you edit. `capture()` freezes it into the next snapshot; `restore()` rolls it back to an earlier one while remembering that earlier version as the lineage parent.
+- **`PromptRepository`** (caretaker) — owns the *policy*: version numbering, the content-addressed no-op, optimistic-concurrency conflict detection, restore-as-append, and diffing. It delegates only four raw storage primitives to a backend, so `JsonPromptRepository` could be swapped for Postgres or S3 without touching the policy.
+
+The store is **append-only by construction** — there is no update and no delete. Restoring an old version appends a *new* head whose parent is the restored version, so "we shipped v2, rolled back to v1, then shipped v4" stays legible months later.
+
+### The evaluation methodology
+
+A task is a set of labeled cases, each with an `expected` value and an assertion. `run_suite` renders each case's input into the template, runs the model, and scores the output, producing a pass rate and a token-cost total.
+
+To decide whether one variant genuinely beats another, the harness uses a **paired bootstrap** over the shared cases. For each of `iters` resamples it draws case indices with replacement and records the pass-rate difference $B - A$ on that resample; the 2.5th and 97.5th percentiles of those differences form the 95% CI:
+
+$$\Delta = \overline{B} - \overline{A}, \qquad \text{CI}_{95\%} = \left[\, Q_{0.025}(\Delta^*),\; Q_{0.975}(\Delta^*) \,\right]$$
+
+`B` is declared a significant winner only when the whole interval sits above zero. The **regression gate** compares a candidate's pass rate against the registered baseline and fails if the drop exceeds the tolerance (default `0.03`, i.e. 3 percentage points).
+
+### The model is a simulator, on purpose
+
+`SimulatedModel` is deterministic and fully offline — a real LLM would add nondeterminism and network cost the workbench doesn't need to demonstrate the *harness*. Output quality is a function of measurable prompt-engineering features (a format spec, few-shot examples, explicit constraints), so a better-engineered prompt earns a higher pass rate that the A/B machinery then recovers. The signal is planted; the code that measures it is the real deliverable.
+
+## Getting started
+
+```bash
+make install                 # uv sync --group dev
+
+uv run python scripts/make_tasks.py           # build synthetic cases + seed prompt variants
+uv run python -m promptforge.evaluation.run   # evaluate variants -> report.pkl + MLflow run
+
+make test                    # run the suite (uv run pytest --cov)
+```
+
+Run the services:
+
+```bash
+make api                     # FastAPI on http://localhost:8460
+make ui                      # Streamlit bench on http://localhost:8961
+make mlflow                  # MLflow tracking UI on http://localhost:5047
+```
+
+The API needs `report.pkl` and `cases.parquet` to exist, so run the two data-pipeline commands above before starting it. Or run everything in containers:
+
+```bash
+make docker-up               # docker compose up --build -d  (API :8460, UI :8961)
+make docker-down
+```
+
+### Use the registry directly
+
+```python
+from promptforge.registry.repository import get_repository
+
+repo = get_repository()
+
+# Register a first version (append-only; parent is None, version becomes 1)
+repo.register("sentiment", "engineered",
+              "Classify the sentiment. Answer with only one word: {input}",
+              created_by="jackson")
+
+# Edit and save a new version
+repo.register("sentiment", "engineered",
+              "Classify the sentiment. Do not explain. Answer with only one word: {input}",
+              created_by="jackson")
+
+# Roll back to v1 — appends a NEW head whose parent is v1; history is kept
+head = repo.restore("sentiment", "engineered", version=1)
+```
+
+## API
+
+| Method | Route | Purpose |
 |---|---|---|
-| **Rollback Latency** | Manual redeployment (20 mins) | **fast ([measured on your hardware] Memento Restore)** |
-| **Audit Traceability** | None (Git history detached) | **100% Immutable Commit Hash & Author Tagging** |
-| **Automated Regression Suite** | Manual ad-hoc testing | **Pre-Commit Benchmark Gate (Pass/Fail)** |
-| **A/B Model Parameter Testing** | Risky production overrides | **Isolated Memento Snapshot Branches** | --- ## 🗂️ Module Organization ```
-promptforge/
-├── src/promptforge/
-│ ├── registry/ ← 🏛️ Versioned Repository & Memento Snapshots Architecture
-│ │ ├── repository.py │ VersionedPromptRepository, PromptTemplate
-│ │ ├── memento.py │ PromptMemento, SnapshotGraph, TagRegistry
-│ │ └── __init__.py
-│ ├── evaluation/ ← 📊 Automated prompt regression evaluation suite
-│ ├── llm/ ← 🤖 Model adapters (OpenAI, Anthropic, Gemini, Local)
-│ ├── api/ ← 🌐 FastAPI endpoints (/prompts, /snapshots, /evaluate, /health)
-│ ├── ui/ ← 🖥️ Streamlit interactive prompt forge studio
-│ └── settings.py
-├── tests/
-│ ├── test_registry.py ← Memento snapshots, versioning, and rollback tests
-│ ├── test_promptforge.py ← Evaluation suite & API contract tests
-│ └── conftest.py
-├── docker-compose.yml
-└── pyproject.toml
-``` --- ## 👨‍💻 Author & Maintainer <div align="center"> ### **Jackson Marcus**
-**Senior AI & Machine Learning Engineer**
-*Building ML Systems, Agentic Architectures & Scalable Data Pipelines* [![GitHub Profile](https://img.shields.io/badge/GitHub-jackson--marcus-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/jackson-marcus)
-[![Upwork Portfolio](https://img.shields.io/badge/Upwork-Top%20Rated%20Plus-14A800?style=for-the-badge&logo=upwork&logoColor=white)](https://www.upwork.com/freelancers/~012235717501ad9c7b)
-[![Email Contact](https://img.shields.io/badge/Email-wajahatanees41%40gmail.com-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:wajahatanees41@gmail.com) 📍 *Byron, GA, USA* </div>
+| `GET`  | `/health` | Liveness check |
+| `GET`  | `/tasks` | Tasks with their baseline variant and variant count |
+| `GET`  | `/leaderboard/{task}` | Ranked variants: pass rate, cost, delta vs baseline, CI, gate |
+| `POST` | `/ab` | A/B two ad-hoc templates on a task's cases (bootstrap CI + regression) |
+| `GET`  | `/variants/{task}` | Current head template of every registered variant |
+| `GET`  | `/variants/{task}/history` | Full append-only lineage of every snapshot |
+| `GET`  | `/variants/{task}/diff` | Unified line diff between two versions of a variant |
+| `POST` | `/variants/{task}/restore` | Restore a version by appending it as a new head |
+
+## Evaluation
+
+Evaluation runs on **synthetic** data. `scripts/make_tasks.py` generates two tasks (`sentiment`, `intent`), each with labeled cases (60 per task by default) checked via `exact_match`, and seeds three prompt variants of increasing quality: `bare` (no format spec or examples), `formatted` (adds a format instruction), and `engineered` (format + few-shot + constraint).
+
+`promptforge.evaluation.run` scores the head of every variant, builds a per-task leaderboard, logs pass-rate metrics and run params to MLflow, and writes `report.pkl` for the API. Because the simulator's quality tracks prompt-engineering features, the engineered variant is expected to lead the board — but the *ranking is measured by the harness, not asserted*. No fixed numbers are quoted here because they depend on the generated dataset and seed; reproduce them with:
+
+```bash
+uv run python scripts/make_tasks.py
+uv run python -m promptforge.evaluation.run
+```
+
+## Testing
+
+```bash
+make test                    # uv run pytest --cov
+```
+
+- `test_registry.py` — memento immutability, content addressing, the stale-save conflict, restore-as-append, and diffing.
+- `test_promptforge.py` — prompt-feature detection, assertion scorers, the bootstrap A/B, the regression gate, and the API contract.
+
+## Limitations
+
+- The model is a deterministic **simulator**; results demonstrate the harness, not real LLM behaviour. Swapping in a live model would require an adapter and would reintroduce nondeterminism and cost.
+- Assertion scoring is intentionally simple (exact/substring/JSON-validity/regex); nuanced or open-ended outputs would need semantic or judge-based scoring.
+- The default backend is a single JSON file read once per instance — fine for a workbench, not for concurrent multi-writer use (the swappable-backend seam exists precisely so this can change).
+- The bootstrap CI assumes the two variants are evaluated on the *same* cases; A/B across mismatched suites is out of scope.
+
+## Project structure
+
+```
+src/promptforge/
+├── registry/     # Memento + originator + caretaker; the versioning core
+│   ├── memento.py     # PromptSnapshot (immutable) + PromptVariant (working copy)
+│   └── repository.py  # PromptRepository policy + JsonPromptRepository backend
+├── evaluation/   # run_suite, bootstrap A/B, regression gate, cost (harness.py)
+├── llm/          # SimulatedModel — deterministic, feature-aware, offline
+├── api/          # FastAPI app (main:app) and routes
+├── ui/           # Streamlit bench: leaderboards, A/B, history/diff
+└── settings.py   # env + configs/config.yaml loader
+scripts/make_tasks.py   # synthetic task cases + seed prompt variants
+```
+
+## License
+
+MIT
+
+---
+
+<div align="center">
+
+**Jackson Marcus** · Senior AI & Machine Learning Engineer
+
+[![GitHub](https://img.shields.io/badge/GitHub-jackson--marcus-181717?logo=github&logoColor=white)](https://github.com/jackson-marcus)
+[![Email](https://img.shields.io/badge/Email-contact-D14836?logo=gmail&logoColor=white)](mailto:wajahatanees41@gmail.com)
+
+</div>
