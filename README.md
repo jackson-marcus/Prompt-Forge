@@ -147,6 +147,7 @@ head = repo.restore("sentiment", "engineered", version=1)
 | `GET`  | `/tasks` | Tasks with their baseline variant and variant count |
 | `GET`  | `/leaderboard/{task}` | Ranked variants: pass rate, cost, delta vs baseline, CI, gate |
 | `POST` | `/ab` | A/B two ad-hoc templates on a task's cases (bootstrap CI + regression) |
+| `POST` | `/optimize` | Hill-climb a better template for a task under a model-call budget |
 | `GET`  | `/variants/{task}` | Current head template of every registered variant |
 | `GET`  | `/variants/{task}/history` | Full append-only lineage of every snapshot |
 | `GET`  | `/variants/{task}/diff` | Unified line diff between two versions of a variant |
@@ -172,7 +173,74 @@ make test                    # uv run pytest --cov
 - `test_registry.py` — memento immutability, content addressing, the stale-save conflict, restore-as-append, and diffing.
 - `test_promptforge.py` — prompt-feature detection, assertion scorers, the bootstrap A/B, the regression gate, and the API contract.
 
+## Searching for a better prompt, on a budget
+
+The leaderboard ranks variants somebody already wrote. `POST /optimize` writes
+them: a hill climb that proposes one edit at a time (add a format spec, add a
+constraint, add few-shot examples, rewrite the persona), scores it against the
+current best, and keeps it only if an acceptance rule says the gain is real.
+
+Two things make that non-trivial, and both are in `optimizer/`:
+
+- **`ledger.py`** — every candidate costs model calls, so the climb runs against
+  a declared budget and raises `BudgetExhaustedError` rather than quietly
+  spending more. The run reports calls and dollars alongside the result.
+- **`climb.py`** — the acceptance rule is a parameter, not a constant:
+  `greedy` (any positive delta), `safe` (positive, and the CI lower bound is not
+  worse than a tolerance), `gated` (the A/B must be significant).
+
+### The strict rules were worse, which is not what I expected
+
+`scripts/bench_optimizer.py` scores the rules against the simulator's planted
+signal. The simulator rewards exactly three prompt features and is indifferent
+to the persona line, so the *true* pass rate of any template is computable — and
+every rule can be scored on what actually matters rather than on its own report.
+
+Bootstrap CI over rows (4 seeds, 2 tasks):
+
+```
+  policy   inert  missed    true     dev    test  optimism   calls
+  greedy    0.12    0.25   0.840   0.929   0.917     0.013     322
+    safe    0.12    0.88   0.725   0.850   0.854    -0.004     296
+   gated    0.00    1.12   0.685   0.821   0.812     0.008     285
+```
+
+`gated` is the most disciplined rule by its own lights — it accepted **zero**
+inert edits, perfect precision. It also finished with the worst prompt. It threw
+away 1.12 of the three real improvements per run on average, ending at a true
+pass rate of 0.685 against greedy's 0.840.
+
+The reason the caution does not pay here is in the `optimism` column: greedy's
+dev score overshoots its held-out score by 0.013. There is barely any
+overfitting for a significance gate to protect against, so the gate is almost
+pure cost.
+
+Resampling *inputs* rather than rows widens the intervals (each input repeats
+about four times in a suite, so rows are not independent) and makes the strict
+rules stricter still:
+
+```
+  policy   inert  missed    true   optimism
+  greedy    0.12    0.25   0.840      0.013
+    safe    0.12    1.12   0.685     -0.042
+   gated    0.00    1.38   0.645     -0.029
+```
+
+Read this as a statement about *this simulator at this suite size*, not a
+general result. With a noisier task, a smaller dev set, or edits that genuinely
+overfit, the ordering would be expected to flip — which is exactly why the rule
+is a parameter and the benchmark is committed.
+
+```bash
+uv run python scripts/bench_optimizer.py --seeds 1 2 3 4
+uv run python scripts/bench_optimizer.py --seeds 1 2 3 4 --cluster
+```
+
 ## Limitations
+
+- The optimiser is judged here against a simulator whose rewarded features are known. On a real model the true pass rate is unobservable, so the acceptance rule cannot be tuned this way - the benchmark shows the rules behave sanely, not which one to pick.
+- The edit set is four hand-written operators. It cannot discover phrasing a human did not think to encode.
+- Budget is counted in model calls, not tokens or wall clock; a long-context task would exhaust real spend well before the call ceiling.
 
 - The model is a deterministic **simulator**; results demonstrate the harness, not real LLM behaviour. Swapping in a live model would require an adapter and would reintroduce nondeterminism and cost.
 - Assertion scoring is intentionally simple (exact/substring/JSON-validity/regex); nuanced or open-ended outputs would need semantic or judge-based scoring.

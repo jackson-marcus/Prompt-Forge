@@ -1,4 +1,4 @@
-"""API routes: /health, /tasks, /leaderboard/{task}, /ab, /variants/{task} (+history, diff, restore)."""
+"""API routes: /health, /tasks, /leaderboard/{task}, /ab, /optimize, /variants/{task} (+history, diff, restore)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from promptforge.evaluation.harness import bootstrap_ab, regression_check, run_suite
+from promptforge.optimizer.climb import POLICIES, HillClimb
 from promptforge.registry.repository import UnknownPromptError, get_repository
 from promptforge.settings import get_config, resolve_path
 
@@ -22,6 +23,18 @@ class ABRequest(BaseModel):
     task: str
     template_a: str = Field(min_length=5, max_length=4000)
     template_b: str = Field(min_length=5, max_length=4000)
+
+
+class OptimizeRequest(BaseModel):
+    task: str
+    name: str = Field(min_length=1, max_length=200, description="Variant whose head to climb from")
+    policy: str | None = Field(default=None, description="greedy | safe | gated (default: config)")
+    max_rounds: int | None = Field(default=None, ge=1, le=10)
+    seed: int = Field(default=0, ge=0, description="Dev/test split seed")
+    commit: bool = Field(
+        default=True, description="Append each accepted step to the variant's history"
+    )
+    created_by: str = Field(default="optimizer", min_length=1, max_length=200)
 
 
 class RestoreRequest(BaseModel):
@@ -85,7 +98,12 @@ def ab_test(request: ABRequest) -> dict:
 
     run_a = run_suite(request.template_a, task_cases)
     run_b = run_suite(request.template_b, task_cases)
-    ab = bootstrap_ab(run_a["results"], run_b["results"], get_config()["eval"]["bootstrap_iters"])
+    ab = bootstrap_ab(
+        run_a["results"],
+        run_b["results"],
+        get_config()["eval"]["bootstrap_iters"],
+        groups=task_cases["input"].tolist(),
+    )
     reg = regression_check(run_b["pass_rate"], run_a["pass_rate"])
     return {
         "a": {"pass_rate": run_a["pass_rate"], "cost_usd": run_a["cost_usd"]},
@@ -154,3 +172,60 @@ def variant_restore(task: str, request: RestoreRequest) -> dict:
     except UnknownPromptError as exc:
         raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
     return {"task": task, "restored_from": request.version, "head": snapshot.to_dict()}
+
+
+@router.post("/optimize")
+def optimize(request: OptimizeRequest) -> dict:
+    """Hill-climb a variant's head prompt over structural edits, gated by the A/B harness.
+
+    Edits are chosen on a dev split of the task's cases and the result is judged
+    on the held-out rest. With ``commit`` every accepted step is appended to the
+    variant's history as its own version, so the climb is a lineage you can
+    diff and roll back like any other change.
+    """
+    if request.policy is not None and request.policy not in POLICIES:
+        raise HTTPException(
+            status_code=422, detail=f"unknown policy {request.policy!r}; use {sorted(POLICIES)}"
+        )
+    try:
+        cases = _cases()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    task_cases = cases[cases["task"] == request.task].reset_index(drop=True)
+    if task_cases.empty:
+        raise HTTPException(status_code=404, detail=f"unknown task {request.task}")
+
+    repo = get_repository()
+    try:
+        head = repo.get(request.task, request.name)
+    except UnknownPromptError as exc:
+        raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+
+    climb = HillClimb(policy=request.policy, max_rounds=request.max_rounds, seed=request.seed)
+    run = climb.optimize(head.template, task_cases)
+
+    versions = []
+    if request.commit:
+        for step in run["steps"]:
+            snapshot = repo.register(
+                request.task,
+                request.name,
+                step["template"],
+                created_by=f"{request.created_by}:{step['edit']}",
+            )
+            versions.append(snapshot.version)
+    logger.info(
+        "optimize %s/%s policy=%s steps=%s stop=%r",
+        request.task,
+        request.name,
+        run["policy"],
+        [s["edit"] for s in run["steps"]],
+        run["stop_reason"],
+    )
+    return {
+        "task": request.task,
+        "name": request.name,
+        "from_version": head.version,
+        "committed_versions": versions,
+        **run,
+    }

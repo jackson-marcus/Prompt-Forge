@@ -33,16 +33,38 @@ def run_suite(template: str, cases: pd.DataFrame, model: SimulatedModel | None =
     }
 
 
-def bootstrap_ab(results_a: list[int], results_b: list[int], iters: int, seed: int = 42) -> dict:
-    """Paired bootstrap of the pass-rate difference (B - A) over shared cases."""
+def bootstrap_ab(
+    results_a: list[int],
+    results_b: list[int],
+    iters: int,
+    seed: int = 42,
+    groups: list[str] | None = None,
+) -> dict:
+    """Paired bootstrap of the pass-rate difference (B - A) over shared cases.
+
+    With ``groups`` (one key per case - normally the case's input text) the
+    resampling unit is the group, not the case: every case of a drawn group
+    comes along. Cases that share an input are not independent evidence - a
+    deterministic model answers a repeated input identically - and resampling
+    them as if they were makes the interval too narrow. The seeded suites here
+    draw 60 cases from ~15 seed phrases, so this is not a corner case.
+    """
     rng = np.random.default_rng(seed)
     a = np.array(results_a, dtype=float)
     b = np.array(results_b, dtype=float)
     n = min(len(a), len(b))
     a, b = a[:n], b[:n]
+    if groups is None:
+        clusters = [np.array([i]) for i in range(n)]
+    else:
+        members: dict[str, list[int]] = {}
+        for i, key in enumerate(groups[:n]):
+            members.setdefault(str(key), []).append(i)
+        clusters = [np.array(v) for v in members.values()]
+    m = len(clusters)
     diffs = np.empty(iters)
     for i in range(iters):
-        idx = rng.integers(0, n, n)
+        idx = np.concatenate([clusters[j] for j in rng.integers(0, m, m)])
         diffs[i] = b[idx].mean() - a[idx].mean()
     lo, hi = np.quantile(diffs, [0.025, 0.975])
     return {
@@ -51,6 +73,8 @@ def bootstrap_ab(results_a: list[int], results_b: list[int], iters: int, seed: i
         "ci_high": round(float(hi), 4),
         "b_wins_significant": bool(lo > 0),
         "a_wins_significant": bool(hi < 0),
+        "n_cases": n,
+        "n_groups": m,
     }
 
 

@@ -12,6 +12,12 @@ eval:
   bootstrap_iters: 2000
   regression_tolerance: 0.03   # a variant may not drop >3pp below the registered baseline
 
+optimizer:
+  dev_fraction: 0.5      # share of a task's cases the climb may look at; the rest judge the result
+  policy: gated          # greedy | safe | gated  (see promptforge.optimizer.climb)
+  max_rounds: 6
+  max_model_calls: 600   # search budget; the hold-out verdict is not counted against it
+
 cost:
   usd_per_1k_input: 0.003
   usd_per_1k_output: 0.015

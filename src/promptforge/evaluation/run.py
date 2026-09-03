@@ -38,9 +38,10 @@ def evaluate() -> dict:
         }
 
         base_results = runs[baseline]["results"]
+        groups = task_cases["input"].tolist()  # repeated inputs are one unit of evidence
         rows = []
         for name, result in runs.items():
-            ab = bootstrap_ab(base_results, result["results"], iters)
+            ab = bootstrap_ab(base_results, result["results"], iters, groups=groups)
             reg = regression_check(result["pass_rate"], runs[baseline]["pass_rate"])
             rows.append(
                 {

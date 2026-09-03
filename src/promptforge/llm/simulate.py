@@ -43,11 +43,20 @@ class SimulatedModel:
         self.base_accuracy = base_accuracy
         self.calls = 0
 
+    def p_correct(self, template: str) -> float:
+        """Probability the label is right, as a function of the prompt's features alone.
+
+        Exposed so an optimiser can be audited against the planted signal: this is
+        the quantity a prompt edit truly moves, before per-case sampling noise.
+        """
+        feats = prompt_features(template)
+        p = self.base_accuracy + 0.2 * feats["has_fewshot"] + 0.12 * feats["has_constraint"]
+        return min(p, 0.97)
+
     def run(self, template: str, task_input: str, labels: list[str], true_label: str) -> dict:
         self.calls += 1
         feats = prompt_features(template)
-        p_correct = self.base_accuracy + 0.2 * feats["has_fewshot"] + 0.12 * feats["has_constraint"]
-        p_correct = min(p_correct, 0.97)
+        p_correct = self.p_correct(template)
 
         roll = _seeded_unit(template, task_input, "correct")
         if roll < p_correct:

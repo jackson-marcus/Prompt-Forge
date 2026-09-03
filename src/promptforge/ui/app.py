@@ -1,4 +1,4 @@
-"""Streamlit demo: variant leaderboards + an interactive A/B prompt bench."""
+"""Streamlit bench: leaderboards, an A/B prompt bench, a gated prompt optimiser, history."""
 
 from __future__ import annotations
 
@@ -28,7 +28,9 @@ if not _ok():
     st.error(f"API not reachable at {API_URL}. Start it with `make api`.")
     st.stop()
 
-tab_board, tab_ab, tab_history = st.tabs(["🏆 Leaderboards", "⚖️ A/B bench", "🕓 History"])
+tab_board, tab_ab, tab_opt, tab_history = st.tabs(
+    ["🏆 Leaderboards", "⚖️ A/B bench", "🧗 Optimize", "🕓 History"]
+)
 
 with tab_board:
     tasks = httpx.get(f"{API_URL}/tasks", timeout=30).json()["tasks"]
@@ -109,3 +111,56 @@ with tab_history:
             st.code(diff["diff"], language="diff")
     else:
         st.info("Only one version so far. Save an edited template to build a lineage.")
+
+with tab_opt:
+    tasks = httpx.get(f"{API_URL}/tasks", timeout=30).json()["tasks"]
+    task = st.selectbox("Task", list(tasks), key="opt-task")
+    variants = httpx.get(f"{API_URL}/variants/{task}", timeout=30).json()["variants"]
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+    name = c1.selectbox("Variant to climb from", list(variants), key="opt-variant")
+    policy = c2.selectbox("Acceptance rule", ["gated", "safe", "greedy"], key="opt-policy")
+    seed = c3.number_input("Split seed", min_value=0, value=0, step=1, key="opt-seed")
+    commit = c4.checkbox("Version each step", value=True, key="opt-commit")
+    st.code(variants[name], language="text")
+    st.caption(
+        "Edits are chosen on half of the task's cases and judged on the other half. "
+        "`gated` needs the bootstrap CI to clear zero (the leaderboard's bar); `greedy` "
+        "takes any positive dev delta - including noise."
+    )
+    if st.button("Climb", type="primary"):
+        body = httpx.post(
+            f"{API_URL}/optimize",
+            json={"task": task, "name": name, "policy": policy, "seed": int(seed), "commit": commit},
+            timeout=300,
+        ).json()
+        hold = body["holdout"]
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Start (held-out)", f"{hold['start']['test_pass_rate']:.0%}")
+        c2.metric(
+            "Final (held-out)",
+            f"{hold['final']['test_pass_rate']:.0%}",
+            f"{hold['ab']['delta']:+.0%} vs start",
+        )
+        c3.metric(
+            "Dev-set optimism",
+            f"{hold['optimism']:+.0%}",
+            "dev minus held-out on the final prompt",
+            delta_color="off",
+        )
+        steps = " -> ".join(s["edit"] for s in body["steps"]) or "(none)"
+        st.write(f"**Accepted:** {steps}  \n**Stopped because:** {body['stop_reason']}")
+        if body["committed_versions"]:
+            st.success(
+                f"Appended versions {body['committed_versions']} to {task}/{name} "
+                f"(from v{body['from_version']}). See the History tab to diff or roll back."
+            )
+        ab = hold["ab"]
+        st.caption(
+            f"Held-out CI on the gain: [{ab['ci_low']:+.0%}, {ab['ci_high']:+.0%}] over "
+            f"{ab['n_groups']} distinct inputs ({hold['n_test']} cases); "
+            f"{'significant' if ab['b_wins_significant'] else 'not significant'}. "
+            f"Search spent {body['ledger']['model_calls']} model calls, "
+            f"${body['ledger']['cost_usd']:.4f}."
+        )
+        st.dataframe(pd.DataFrame(body["ledger"]["events"]), hide_index=True, use_container_width=True)
+        st.code(body["final_template"], language="text")
